@@ -1,0 +1,168 @@
+<?php
+require '../DB/db.php';
+include '../inc/header.php';
+
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+// ===== ตรวจสอบสิทธิ์ admin =====
+if(!isset($_SESSION['user']) || $_SESSION['user']['role'] !== 'admin') {
+    die("<p style='color:red;'>คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>");
+}
+
+// ===== ลบ log ที่เกิน 5 ปี =====
+$deleteBefore = date('Y-m-d H:i:s', strtotime('-5 years'));
+$pdo->prepare("DELETE FROM activity_log WHERE deleted_at < ?")->execute([$deleteBefore]);
+
+// ===== กู้คืนข้อมูล =====
+if (isset($_GET['restore_id'])) {
+    $restoreId = intval($_GET['restore_id']);
+
+    $stmt = $pdo->prepare("
+        SELECT * FROM activity_log
+        WHERE id = ? AND restore_status = 0
+    ");
+    $stmt->execute([$restoreId]);
+    $log = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if ($log) {
+        $data = json_decode($log['item_data'], true);
+        $type = $log['item_type'];
+
+        switch ($type) {
+            case 'user':
+                $table = 'users';
+                break;
+            case 'project':
+                $table = 'projects';
+                break;
+            case 'file':
+                $table = 'project_files';
+                break;
+            default:
+                die("ประเภทข้อมูลไม่รองรับ");
+        }
+
+        $fields = array_keys($data);
+        $values = array_values($data);
+        $placeholders = implode(',', array_fill(0, count($fields), '?'));
+
+        $sql = "INSERT INTO $table (" . implode(',', $fields) . ") VALUES ($placeholders)";
+        $pdo->prepare($sql)->execute($values);
+
+        $pdo->prepare("
+            UPDATE activity_log
+            SET restore_status = 1, restored_at = NOW()
+            WHERE id = ?
+        ")->execute([$restoreId]);
+
+        echo "<script>alert('กู้คืนข้อมูลเรียบร้อยแล้ว'); window.location.href='activity_log.php';</script>";
+        exit;
+    }
+}
+
+// ===== ดึงข้อมูลย้อนหลัง 5 ปี =====
+$fiveYearsAgo = date('Y-m-d H:i:s', strtotime('-5 years'));
+$stmt = $pdo->prepare("
+    SELECT * FROM activity_log
+    WHERE deleted_at >= ?
+    ORDER BY deleted_at DESC
+");
+$stmt->execute([$fiveYearsAgo]);
+$logs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// ===== สรุป =====
+$total_logs = count($logs);
+$restored_count = count(array_filter($logs, fn($l) => $l['restore_status'] == 1));
+?>
+
+<h2 style="margin:20px;">ถังขยะ</h2>
+<p>ข้อมูลที่ถูกลบย้อนหลัง 5 ปี</p>
+
+<div style="margin:15px 0; padding:10px; border:1px solid #ffc400; border-radius:8px;">
+    <strong>จำนวน log ทั้งหมด:</strong> <?= $total_logs ?><br>
+    <strong>กู้คืนแล้ว:</strong> <?= $restored_count ?>
+</div>
+
+<!-- ================= USER TABLE ================= -->
+<h3 style="margin:20px 0 10px;">ถังขยะผู้ใช้ (Users)</h3>
+
+<table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;">
+    <tr style="background:#b40000;color:#fff;text-align:center;">
+        <th style="width:150px;">เวลา</th>
+        <th>รหัสนักศึกษา</th>
+        <th>ชื่อที่ถูกลบ</th>
+        <th>ผู้ลบ</th>
+        <th>สถานะ</th>
+        <th>จัดการ</th>
+    </tr>
+
+<?php foreach ($logs as $log): ?>
+<?php
+    if ($log['item_type'] !== 'user') continue;
+    $data = json_decode($log['item_data'], true);
+    $deleted_name = $data['fullname'] ?? $data['email'] ?? '-';
+?>
+<tr>
+    <td><?= htmlspecialchars($log['deleted_at']) ?></td>
+    <td style="text-align:center;"><?= $log['item_id'] ?></td>
+    <td><?= htmlspecialchars($deleted_name) ?></td>
+    <td><?= htmlspecialchars($log['deleted_by']) ?></td>
+    <td style="text-align:center;">
+        <?= $log['restore_status'] ? 'กู้แล้ว' : 'ยังไม่ได้กู้' ?>
+    </td>
+    <td style="text-align:center;">
+        <?php if (!$log['restore_status']): ?>
+            <a href="activity_log.php?restore_id=<?= $log['id'] ?>"
+               onclick="return confirm('ยืนยันการกู้คืนข้อมูลนี้?')">
+                <button style="background:#28a745;color:white;">Restore</button>
+            </a>
+        <?php else: ?>
+            <button disabled style="background:#ccc;">Restore</button>
+        <?php endif; ?>
+    </td>
+</tr>
+<?php endforeach; ?>
+</table>
+
+<!-- ================= PROJECT TABLE ================= -->
+<h3 style="margin:30px 0 10px;">ถังขยะโครงงาน (Projects)</h3>
+
+<table border="1" cellpadding="5" cellspacing="0" style="border-collapse:collapse;width:100%;">
+    <tr style="background:#b40000;color:#fff;text-align:center;">
+        <th style="width:150px;">เวลา</th>
+        <th>รหัสโครงงาน</th>
+        <th>ชื่อที่ถูกลบ</th>
+        <th>ผู้ลบ</th>
+        <th>สถานะ</th>
+        <th>จัดการ</th>
+    </tr>
+
+<?php foreach ($logs as $log): ?>
+<?php
+    if ($log['item_type'] !== 'project') continue;
+    $data = json_decode($log['item_data'], true);
+    $deleted_name = $data['title_th'] ?? $data['title_en'] ?? '-';
+?>
+<tr>
+    <td><?= htmlspecialchars($log['deleted_at']) ?></td>
+    <td style="text-align:center;"><?= $log['item_id'] ?></td>
+    <td><?= htmlspecialchars($deleted_name) ?></td>
+    <td><?= htmlspecialchars($log['deleted_by']) ?></td>
+    <td style="text-align:center;">
+        <?= $log['restore_status'] ? 'กู้แล้ว' : 'ยังไม่ได้กู้' ?>
+    </td>
+    <td style="text-align:center;">
+        <?php if (!$log['restore_status']): ?>
+            <a href="activity_log.php?restore_id=<?= $log['id'] ?>"
+               onclick="return confirm('ยืนยันการกู้คืนข้อมูลนี้?')">
+                <button style="background:#28a745;color:white;">Restore</button>
+            </a>
+        <?php else: ?>
+            <button disabled style="background:#ccc;">Restore</button>
+        <?php endif; ?>
+    </td>
+</tr>
+<?php endforeach; ?>
+</table>
+
+<?php include '../inc/footer.php'; ?>
