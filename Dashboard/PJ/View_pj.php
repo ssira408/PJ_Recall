@@ -14,43 +14,55 @@ $is_admin = ($user_role === 'admin' || $user_role === 'adminsupport');
 $is_employee = ($user_role === 'employee');
 $is_user = ($user_role === 'user');
 
-// รับ id ของโครงงาน
-if (!isset($_GET['id'])) die("<p style='color:red;'>ไม่พบโครงงาน</p>");
-$project_id = trim($_GET['id']); 
+// ===== รับ project_code =====
+if (!isset($_GET['code'])) die("<p style='color:red;'>ไม่พบโครงงาน</p>");
+$project_code = trim($_GET['code']);
 
-// ดึงข้อมูลโครงงาน
-$stmt = $conn->prepare("SELECT * FROM projects WHERE project_id = :id");
-$stmt->execute([':id' => $project_id]);
+// ===== ดึงข้อมูลโครงงาน =====
+$stmt = $conn->prepare("SELECT * FROM projects WHERE project_code = :code");
+$stmt->execute([':code' => $project_code]);
 $project = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$project) die("<p style='color:red;'>ไม่พบโครงการ</p>");
 
+// ใช้ project_id ภายในระบบ
+$project_id = $project['project_id'];
+
 // ดึงผู้จัดทำจาก project_users
-$stmtUsers = $conn->prepare("SELECT user_name, student_id, education_level FROM project_users WHERE project_id = :pid");
-$stmtUsers->execute([':pid'=>$project_id]);
+$stmtUsers = $conn->prepare("
+    SELECT user_name, student_id, education_level 
+    FROM project_users 
+    WHERE project_id = :pid
+");
+$stmtUsers->execute([':pid' => $project_id]);
 $authors = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
 
 include '../../inc/header.php';
 ?>
-<div style ="margin:20px; font-size:1.80em:">
-<h2>รายละเอียดโครงงาน <?= $is_admin || $is_employee ? '' : '' ?></h2>
+
+<div style="margin:20px; font-size:1.80em;">
+    <h2>รายละเอียดโครงงาน</h2>
 </div>
+
 <div style="border:1px solid #ffc400; padding:10px; margin:15px; border-radius:8px;">
 
 <?php if($is_admin || $is_employee): ?>
-    <p><strong>รหัสโครงงาน :</strong> <?= str_pad($project['project_id'] ?? 0, 6, "0", STR_PAD_LEFT) ?></p>
+    <p><strong>รหัสโครงงาน :</strong> <?= htmlspecialchars($project['project_code']) ?></p>
 <?php endif; ?>
 
 <p><strong>ชื่อโครงงาน (ไทย) :</strong> <?= htmlspecialchars($project['title_th'] ?? '-') ?></p>
 <p><strong>ชื่อโครงงาน (อังกฤษ) :</strong> <?= htmlspecialchars($project['title_en'] ?? '-') ?></p>
 
-<p><strong>แผนกวิชา/ระดับการศึกษา :</strong> <?= htmlspecialchars($project['department'] ?? '-') ?> / <?= htmlspecialchars($project['education_level'] ?? '-') ?></p>
+<p><strong>แผนกวิชา/ระดับการศึกษา :</strong>
+    <?= htmlspecialchars($project['department'] ?? '-') ?> /
+    <?= htmlspecialchars($project['education_level'] ?? '-') ?>
+</p>
 
-<p><strong>ผู้จัดทำ :</strong>
+<p><strong>ผู้จัดทำ :</strong><br>
 <?php
 $author_list = [];
 foreach($authors as $a){
-    $str = htmlspecialchars($a['user_name'] ?? '');
-    if($str) $author_list[] = $str;
+    $name = htmlspecialchars($a['user_name'] ?? '');
+    if($name) $author_list[] = $name;
 }
 echo !empty($author_list) ? implode("<br>&nbsp;&nbsp;&nbsp;&nbsp;", $author_list) : '-';
 ?>
@@ -68,14 +80,14 @@ echo !empty($author_list) ? implode("<br>&nbsp;&nbsp;&nbsp;&nbsp;", $author_list
 <p><strong>วัตถุประสงค์ :</strong><br><?= nl2br(htmlspecialchars($project['objective'] ?? '-')) ?></p>
 <p><strong>วิธีดำเนินการ :</strong><br><?= nl2br(htmlspecialchars($project['working_principle'] ?? '-')) ?></p>
 <p><strong>ขอบเขต :</strong><br><?= nl2br(htmlspecialchars($project['highlight'] ?? '-')) ?></p>
-<p><strong>ประโยชน์ :</strong><br><?= nl2br(htmlspecialchars($project['benefit'] ?: '-')) ?></p>
+<p><strong>ประโยชน์ :</strong><br><?= nl2br(htmlspecialchars($project['benefit'] ?? '-')) ?></p>
 <p><strong>ระยะเวลา :</strong> <?= htmlspecialchars($project['duration'] ?? '-') ?></p>
 <p><strong>วิทยาลัย :</strong> <?= htmlspecialchars($project['college'] ?? '-') ?></p>
 
 <?php
-// แสดงไฟล์เอกสาร
-$stmtFiles = $conn->prepare("SELECT * FROM project_files WHERE project_id=:pid");
-$stmtFiles->execute([':pid'=>$project_id]);
+// ===== ไฟล์เอกสาร =====
+$stmtFiles = $conn->prepare("SELECT * FROM project_files WHERE project_id = :pid");
+$stmtFiles->execute([':pid' => $project_id]);
 $files = $stmtFiles->fetchAll(PDO::FETCH_ASSOC);
 
 if(!empty($files)){
@@ -83,7 +95,9 @@ if(!empty($files)){
     foreach($files as $f){
         $file_path = '../../projects/' . basename($f['file_name']);
         if(file_exists($file_path)){
-            echo "<a href='$file_path' download>".htmlspecialchars($f['file_name'])."</a><br>";
+            echo "<a href='$file_path' download>"
+                . htmlspecialchars($f['file_name']) .
+                "</a><br>";
         }
     }
     echo "</p>";
@@ -92,7 +106,11 @@ if(!empty($files)){
 
 <?php if($is_admin || $is_employee): ?>
     <?php if (!empty($project['github_link'])): ?>
-        <p><strong>GitHub :</strong> <a href="<?= htmlspecialchars($project['github_link']) ?>" target="_blank"><?= htmlspecialchars($project['github_link']) ?></a></p>
+        <p><strong>GitHub :</strong>
+            <a href="<?= htmlspecialchars($project['github_link']) ?>" target="_blank">
+                <?= htmlspecialchars($project['github_link']) ?>
+            </a>
+        </p>
     <?php endif; ?>
 <?php endif; ?>
 

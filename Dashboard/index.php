@@ -32,7 +32,7 @@ $projects = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 <?php endif; ?>
 
                 <h3>
-                    <a href="<?= $user_logged_in ? 'PJ/view_pj.php?id='.htmlspecialchars($p['project_id']) : 'login.php' ?>">
+                    <a href="<?= $user_logged_in ? 'PJ/view_pj.php?code='.htmlspecialchars($p['project_code']) : 'login.php' ?>">
                         <?= htmlspecialchars($p['title_th'] ?: $p['title_en'] ?: '-') ?>
                     </a>
                 </h3>
@@ -70,13 +70,12 @@ $projects = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     <p><strong>ครูที่ปรึกษาร่วม:</strong> <?= htmlspecialchars($p['advisor_co'] ?? '-') ?></p>
                 <?php endif; ?>
 
-
                 <!-- บทคัดย่อ -->
                 <?php if(!empty($p['abstract'])): ?>
                     <p><strong>บทคัดย่อ:</strong><br><?= nl2br(htmlspecialchars($p['abstract'])) ?></p>
                 <?php endif; ?>
 
-                <a href="<?= $user_logged_in ? 'PJ/view_pj.php?id='.htmlspecialchars($p['project_id']) : 'login.php' ?>">
+                <a href="<?= $user_logged_in ? 'PJ/view_pj.php?code='.htmlspecialchars($p['project_code']) : 'login.php' ?>">
                     <button class="<?= $user_logged_in ? 'btn-view' : 'btn-login' ?>">
                         <?= $user_logged_in ? 'ดูรายละเอียดโครงงาน' : 'เข้าสู่ระบบเพื่อดูรายละเอียด' ?>
                     </button>
@@ -122,12 +121,10 @@ $projects = $stmt->fetchAll(PDO::FETCH_ASSOC);
     margin-bottom: 8px;
     background: #2b96f5ff;
     color: #ffffffff;
-    /* border: 1px solid #ffc400; */
-    border-radius: 6px; /*ค่าเดิม 20 */
+    border-radius: 6px;
     font-size: 14px;
     font-weight: 600;
 }
-
 </style>
 
 <?php include '../Inc/footer.php'; ?>

@@ -10,8 +10,17 @@ if (!$user) {
     die("<p style='color:red;'>คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>");
 }
 
-// ===== รับ project_id =====
-$project_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+// ===== รับ project_id (รองรับ id เดิม + code จาก admin) =====
+$project_id = 0;
+
+if (isset($_GET['id'])) {
+    $project_id = intval($_GET['id']);
+} elseif (isset($_GET['code'])) {
+    $stmt = $pdo->prepare("SELECT project_id FROM projects WHERE project_code = :code LIMIT 1");
+    $stmt->execute(['code' => $_GET['code']]);
+    $project_id = intval($stmt->fetchColumn());
+}
+
 if (!$project_id) die("<p style='color:red;'>ไม่พบโครงการ</p>");
 
 // ===== ดึงข้อมูลโครงการ =====
@@ -76,7 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$approved) {
         $author = trim($author);
         $sid = trim($student_ids_input[$i] ?? '');
         $level = $levels_input[$i] ?? '';
-        if ($author) $authors_arr[] = $author . ($level ? "||$level" : "") . ($sid ? "||$sid" : "");
+        if ($author) {
+            $authors_arr[] = $author . ($level ? "||$level" : "") . ($sid ? "||$sid" : "");
+        }
     }
 
     // ===== อัปโหลดไฟล์ =====
@@ -99,8 +110,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$approved) {
                 }
                 $new_name = uniqid() . "_" . preg_replace('/[^A-Za-z0-9_\-]/','_',pathinfo($original_name,PATHINFO_FILENAME)).".".$ext;
                 $dest = '../../projects/'.$new_name;
-                if(move_uploaded_file($tmp_name,$dest)) $uploaded_files[] = $new_name;
-                else { $error = "อัปโหลดไฟล์ $original_name ไม่สำเร็จ"; break; }
+                if(move_uploaded_file($tmp_name,$dest)) {
+                    $uploaded_files[] = $new_name;
+                } else {
+                    $error = "อัปโหลดไฟล์ $original_name ไม่สำเร็จ";
+                    break;
+                }
             }
         }
     } else {
@@ -154,67 +169,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$approved) {
 <?php if($success): ?><p style="color:green; font-weight:bold;"><?= htmlspecialchars($success) ?></p><?php endif; ?>
 
 <?php if(!$approved): ?>
-    
 <form method="POST" enctype="multipart/form-data" style="margin:20px; margin-bottom:20px; padding:10px; border:1px solid #ffc400; border-radius:8px;">
     <div style="margin:20px;">
-    <label>ชื่อโครงการ (ไทย):</label><br>
-    <input type="text" name="title_th" value="<?= htmlspecialchars($project['title_th']) ?>" required><br><br>
+        <label>ชื่อโครงการ (ไทย):</label><br>
+        <input type="text" name="title_th" value="<?= htmlspecialchars($project['title_th']) ?>" required><br><br>
 
-    <label>ชื่อโครงการ (อังกฤษ):</label><br>
-    <input type="text" name="title_en" value="<?= htmlspecialchars($project['title_en']) ?>"><br><br>
+        <label>ชื่อโครงการ (อังกฤษ):</label><br>
+        <input type="text" name="title_en" value="<?= htmlspecialchars($project['title_en']) ?>"><br><br>
 
-    <label>ผู้จัดทำ:</label><br>
-    <div id="authors-container">
-        <?php 
-        $authors_list = explode(',', $project['author'] ?? '');
-        foreach($authors_list as $a): 
-            $parts = explode('||',$a);
-            $name = $parts[0] ?? '';
-            $level = $parts[1] ?? '';
-            $sid = $parts[2] ?? '';
-        ?>
-        <div class="author-block">
-            <input type="text" name="authors[]" value="<?= htmlspecialchars($name) ?>" required>
-            <input type="text" name="student_ids[]" value="<?= htmlspecialchars($sid) ?>" placeholder="รหัสนักศึกษา">
-            <select name="levels[]">
-                <option value="">-- เลือกระดับ --</option>
-                <?php foreach($levelList as $l): ?>
-                <option value="<?= $l ?>" <?= $level==$l?'selected':'' ?>><?= $l ?></option>
-                <?php endforeach; ?>
-            </select>
-            <button type="button" onclick="removeAuthor(this)">ลบ</button>
+        <label>ผู้จัดทำ:</label><br>
+        <div id="authors-container">
+            <?php 
+            $authors_list = explode(',', $project['author'] ?? '');
+            foreach($authors_list as $a): 
+                $parts = explode('||',$a);
+                $name = $parts[0] ?? '';
+                $level = $parts[1] ?? '';
+                $sid = $parts[2] ?? '';
+            ?>
+            <div class="author-block">
+                <input type="text" name="authors[]" value="<?= htmlspecialchars($name) ?>" required>
+                <input type="text" name="student_ids[]" value="<?= htmlspecialchars($sid) ?>" placeholder="รหัสนักศึกษา">
+                <select name="levels[]">
+                    <option value="">-- เลือกระดับ --</option>
+                    <?php foreach($levelList as $l): ?>
+                        <option value="<?= $l ?>" <?= $level==$l?'selected':'' ?>><?= $l ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="button" onclick="removeAuthor(this)">ลบ</button>
+            </div>
+            <?php endforeach; ?>
         </div>
-        <?php endforeach; ?>
-    </div>
-    <button type="button" onclick="addAuthor()">เพิ่มผู้จัดทำ</button><br><br>
+        <button type="button" onclick="addAuthor()">เพิ่มผู้จัดทำ</button><br><br>
 
-    <label>ครูที่ปรึกษาหลัก:</label><br>
-    <input type="text" name="advisor_main" value="<?= htmlspecialchars($project['advisor_main']) ?>" required><br><br>
+        <label>ครูที่ปรึกษาหลัก:</label><br>
+        <input type="text" name="advisor_main" value="<?= htmlspecialchars($project['advisor_main']) ?>" required><br><br>
 
-    <label>ครูที่ปรึกษาร่วม:</label><br>
-    <input type="text" name="advisor_co" value="<?= htmlspecialchars($project['advisor_co']) ?>"><br><br>
+        <label>ครูที่ปรึกษาร่วม:</label><br>
+        <input type="text" name="advisor_co" value="<?= htmlspecialchars($project['advisor_co']) ?>"><br><br>
 
-    <label>บทคัดย่อ:</label><br>
-    <textarea name="abstract" rows="4"><?= htmlspecialchars($project['abstract']) ?></textarea><br><br>
+        <label>บทคัดย่อ:</label><br>
+        <textarea name="abstract" rows="4"><?= htmlspecialchars($project['abstract']) ?></textarea><br><br>
 
-    <label>วัตถุประสงค์:</label><br>
-    <textarea name="objective" rows="4"><?= htmlspecialchars($project['objective']) ?></textarea><br><br>
+        <label>วัตถุประสงค์:</label><br>
+        <textarea name="objective" rows="4"><?= htmlspecialchars($project['objective']) ?></textarea><br><br>
 
-    <label>ประโยชน์ที่คาดว่าจะได้รับ:</label><br>
-    <textarea name="benefit" rows="4"><?= htmlspecialchars($project['benefit']) ?></textarea><br><br>
+        <label>ประโยชน์ที่คาดว่าจะได้รับ:</label><br>
+        <textarea name="benefit" rows="4"><?= htmlspecialchars($project['benefit']) ?></textarea><br><br>
 
-    <label>แผนก:</label><br>
-    <select name="department">
-        <?php foreach($departList as $d): ?>
-        <option value="<?= htmlspecialchars($d) ?>" <?= $project['department']==$d?'selected':'' ?>><?= htmlspecialchars($d) ?></option>
-        <?php endforeach; ?>
-    </select><br><br>
+        <label>แผนก:</label><br>
+        <select name="department">
+            <?php foreach($departList as $d): ?>
+                <option value="<?= htmlspecialchars($d) ?>" <?= $project['department']==$d?'selected':'' ?>><?= htmlspecialchars($d) ?></option>
+            <?php endforeach; ?>
+        </select><br><br>
 
-    <label>ไฟล์โครงการ:</label><br>
-    <input type="file" name="files[]" multiple>
-    <p>ไฟล์เดิม: <?= htmlspecialchars($project['file'] ?? '') ?></p><br><br>
+        <label>ไฟล์โครงการ:</label><br>
+        <input type="file" name="files[]" multiple>
+        <p>ไฟล์เดิม: <?= htmlspecialchars($project['file'] ?? '') ?></p><br><br>
 
-    <button type="submit">บันทึกการแก้ไข</button>
+        <button type="submit">บันทึกการแก้ไข</button>
     </div>
 </form>
 

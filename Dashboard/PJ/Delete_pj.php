@@ -20,7 +20,7 @@ $project_code = $_GET['code'];
 try {
 
     /* ===== ดึงข้อมูลโครงงาน ===== */
-    $stmt = $pdo->prepare("
+    $stmt = $conn->prepare("
         SELECT *
         FROM projects
         WHERE project_code = ?
@@ -33,21 +33,25 @@ try {
         exit;
     }
 
-    /* ===== บันทึก activity log ===== */
-    $logStmt = $pdo->prepare("
+    /* ===== บันทึก activity log (ใช้ project_code เท่านั้น) ===== */
+    $logStmt = $conn->prepare("
         INSERT INTO activity_log
         (item_type, item_id, item_data, deleted_by)
         VALUES ('project', ?, ?, ?)
     ");
 
     $logStmt->execute([
-        $project['project_id'], // ✅ INT
-        json_encode($project, JSON_UNESCAPED_UNICODE),
+        $project['project_code'], // ✅ ใช้ project_code
+        json_encode([
+            'project_code' => $project['project_code'],
+            'title_th'     => $project['title_th'] ?? null,
+            'title_en'     => $project['title_en'] ?? null
+        ], JSON_UNESCAPED_UNICODE),
         $_SESSION['user']['full_name']
     ]);
 
     /* ===== ลบโครงงาน ===== */
-    $del = $pdo->prepare("
+    $del = $conn->prepare("
         DELETE FROM projects
         WHERE project_code = ?
     ");

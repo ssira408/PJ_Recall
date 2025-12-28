@@ -5,33 +5,10 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 $error = "";
 
 // =======================
-// ตรวจสอบ cookie remember_me
+// ดึง email / password จาก cookie (ถ้ามี)
 // =======================
-if (!isset($_SESSION['user']) && isset($_COOKIE['remember_me'])) {
-    $token = $_COOKIE['remember_me'];
-
-    $stmt = $conn->prepare("
-        SELECT user_id, full_name, email, role, department, profile_img
-        FROM users 
-        WHERE remember_token = :token 
-        LIMIT 1
-    ");
-    $stmt->execute([':token' => $token]);
-    $user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-    if ($user) {
-        $_SESSION['user'] = [
-            'user_id'    => $user['user_id'],
-            'full_name'  => $user['full_name'],
-            'email'      => $user['email'],
-            'role'       => $user['role'],
-            'department' => $user['department'],
-            'profile_img'=> $user['profile_img'] ?? 'default.png'
-        ];
-        header("Location: index.php");
-        exit;
-    }
-}
+$saved_email = $_COOKIE['remember_email'] ?? '';
+$saved_pass  = $_COOKIE['remember_pass'] ?? '';
 
 // =======================
 // login ปกติ
@@ -64,28 +41,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'profile_img'=> $user['profile_img'] ?? 'default.png'
             ];
 
-            // จำฉันไว้
+            // =======================
+            // จำ email + password ไว้ในฟอร์ม
+            // =======================
             if ($remember) {
-                $token = bin2hex(random_bytes(32));
-                setcookie(
-                    'remember_me',
-                    $token,
-                    time() + (30 * 24 * 60 * 60),
-                    "/",
-                    "",
-                    false,
-                    true
-                );
-
-                $stmt = $conn->prepare("
-                    UPDATE users 
-                    SET remember_token = :token 
-                    WHERE user_id = :uid
-                ");
-                $stmt->execute([
-                    ':token' => $token,
-                    ':uid'   => $user['user_id']
-                ]);
+                setcookie('remember_email', $email, time() + (30 * 24 * 60 * 60), '/', '', false, true);
+                setcookie('remember_pass',  $password, time() + (30 * 24 * 60 * 60), '/', '', false, true);
+            } else {
+                // ถ้าไม่ติ๊ก remember ให้ล้าง cookie
+                setcookie('remember_email', '', time() - 3600, '/');
+                setcookie('remember_pass',  '', time() - 3600, '/');
             }
 
             header("Location: index.php");
@@ -107,13 +72,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <?php endif; ?>
 
         <label>Email:</label>
-        <input type="email" name="email" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>" required>
+        <input type="email" name="email"
+               value="<?= htmlspecialchars($_POST['email'] ?? $saved_email) ?>"
+               required>
 
         <label>รหัสผ่าน:</label>
-        <input type="password" name="password" required>
+        <input type="password" name="password"
+               value="<?= htmlspecialchars($saved_pass) ?>"
+               required>
 
         <div class="remember">
-            <input type="checkbox" name="remember" id="remember" <?= isset($_POST['remember']) ? 'checked' : '' ?>>
+            <input type="checkbox" name="remember" id="remember"
+                <?= ($saved_email && $saved_pass) ? 'checked' : '' ?>>
             <label for="remember">จำฉันไว้</label>
         </div>
 
@@ -187,7 +157,3 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     text-align:center;
 }
 </style>
-
-
-
-
